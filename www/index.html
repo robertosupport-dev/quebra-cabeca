@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Quebra-Cabeça</title>
+<style>
+  :root { --s: min(92vw, 60vh); }
+  html, body {
+    margin: 0; height: 100%;
+    background: #14532d;
+    color: #f1f5f9;
+    font-family: sans-serif;
+    overflow: hidden;
+    touch-action: manipulation;
+    user-select: none; -webkit-user-select: none;
+  }
+  #wrap {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    height: 100%; gap: 14px;
+  }
+  #hud { display: flex; gap: 22px; font-size: 18px; }
+  #board {
+    position: relative;
+    width: var(--s); height: var(--s);
+    background: #1c1c1e;
+    border-radius: 18px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.45);
+    padding: 8px;
+    box-sizing: content-box;
+  }
+  #inner { position: relative; width: 100%; height: 100%; }
+  .tile {
+    position: absolute;
+    width: 25%; height: 25%;
+    box-sizing: border-box;
+    border: 3px solid transparent;
+    background-clip: padding-box;
+    background-color: #2d2d30;
+    border-radius: 12px;
+    color: #fff;
+    font-weight: 700;
+    font-size: calc(var(--s) / 8);
+    display: flex; align-items: center; justify-content: center;
+    transition: left .14s ease, top .14s ease, background-color .3s;
+    cursor: pointer;
+  }
+  .tile:active { background-color: #3b3b40; }
+  .done .tile { background-color: #15803d; }
+  button {
+    font-size: 18px; padding: 12px 28px;
+    border: 0; border-radius: 12px;
+    background: #f1f5f9; color: #14532d; font-weight: 700;
+  }
+  #msg { min-height: 22px; font-size: 17px; text-align: center; padding: 0 12px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="hud">
+    <span>Movimentos: <b id="moves">0</b></span>
+    <span>Tempo: <b id="time">0:00</b></span>
+    <span>Recorde: <b id="best">-</b></span>
+  </div>
+  <div id="board"><div id="inner"></div></div>
+  <div id="msg">Toque nas peças ao lado do espaço vazio.</div>
+  <button id="again">Embaralhar</button>
+</div>
+<script>
+const SIZE = 4;
+const TOTAL = SIZE * SIZE;
+const inner = document.getElementById('inner');
+const boardBox = document.getElementById('board');
+const tiles = {};
+let board = [];
+let moves = 0;
+let seconds = 0;
+let timer = null;
+let playing = false;
+let best = 0;
+
+try { best = +localStorage.getItem('best15') || 0; } catch (e) {}
+if (best) document.getElementById('best').textContent = best;
+
+for (let v = 1; v < TOTAL; v++) {
+  const d = document.createElement('div');
+  d.className = 'tile';
+  d.textContent = v;
+  d.addEventListener('click', () => tap(v));
+  inner.appendChild(d);
+  tiles[v] = d;
+}
+
+function isSolved() {
+  for (let i = 0; i < TOTAL - 1; i++) if (board[i] !== i + 1) return false;
+  return board[TOTAL - 1] === 0;
+}
+
+function render() {
+  for (let pos = 0; pos < TOTAL; pos++) {
+    const v = board[pos];
+    if (!v) continue;
+    tiles[v].style.left = (pos % SIZE) * (100 / SIZE) + '%';
+    tiles[v].style.top = Math.floor(pos / SIZE) * (100 / SIZE) + '%';
+  }
+  document.getElementById('moves').textContent = moves;
+}
+
+function fmt(s) {
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+
+function stopTimer() {
+  clearInterval(timer);
+  timer = null;
+}
+
+function startTimer() {
+  if (timer) return;
+  timer = setInterval(() => {
+    seconds++;
+    document.getElementById('time').textContent = fmt(seconds);
+  }, 1000);
+}
+
+function shuffle() {
+  // Embaralha fazendo jogadas válidas a partir da ordem correta,
+  // assim o quebra-cabeça sempre tem solução.
+  board = [];
+  for (let i = 1; i < TOTAL; i++) board.push(i);
+  board.push(0);
+  let empty = TOTAL - 1;
+  let prev = -1;
+  do {
+    for (let n = 0; n < 300; n++) {
+      const r = Math.floor(empty / SIZE);
+      const c = empty % SIZE;
+      const opts = [];
+      if (r > 0) opts.push(empty - SIZE);
+      if (r < SIZE - 1) opts.push(empty + SIZE);
+      if (c > 0) opts.push(empty - 1);
+      if (c < SIZE - 1) opts.push(empty + 1);
+      const choices = opts.filter(p => p !== prev);
+      const pick = choices[Math.floor(Math.random() * choices.length)];
+      board[empty] = board[pick];
+      board[pick] = 0;
+      prev = empty;
+      empty = pick;
+    }
+  } while (isSolved());
+}
+
+function newGame() {
+  stopTimer();
+  shuffle();
+  moves = 0;
+  seconds = 0;
+  playing = true;
+  boardBox.classList.remove('done');
+  document.getElementById('time').textContent = '0:00';
+  document.getElementById('msg').textContent = 'Organize de 1 a 15, com o espaço vazio no final.';
+  render();
+}
+
+function tap(v) {
+  if (!playing) return;
+  const idx = board.indexOf(v);
+  const e = board.indexOf(0);
+  const sameRow = Math.floor(idx / SIZE) === Math.floor(e / SIZE);
+  const sameCol = idx % SIZE === e % SIZE;
+  if (!sameRow && !sameCol) return;
+  const step = sameRow ? (idx > e ? 1 : -1) : (idx > e ? SIZE : -SIZE);
+  for (let p = e; p !== idx; p += step) board[p] = board[p + step];
+  board[idx] = 0;
+  moves++;
+  startTimer();
+  render();
+  if (isSolved()) win();
+}
+
+function win() {
+  playing = false;
+  stopTimer();
+  boardBox.classList.add('done');
+  let text = 'Parabéns! ' + moves + ' movimentos em ' + fmt(seconds) + '.';
+  if (!best || moves < best) {
+    best = moves;
+    document.getElementById('best').textContent = best;
+    try { localStorage.setItem('best15', best); } catch (e) {}
+    text += ' Novo recorde!';
+  }
+  document.getElementById('msg').textContent = text;
+}
+
+document.getElementById('again').addEventListener('click', newGame);
+newGame();
+</script>
+</body>
+</html>
